@@ -1,0 +1,138 @@
+import numpy as np
+
+# Parameters and specifications
+n = 7  # number of work centers
+T = 16  # shift length (in hours)
+V = 20  # average vehicle travel speed (m/minute)
+tl = 0.5  # loading time for a vehicle (minutes)
+tu = 0.5  # unloading time for a vehicle (minutes)
+e = 0.85  # vehicle efficiency
+
+# Coordinates of P and D points
+p_coords = {
+    'P1': (9, 18),
+    'P2': (15, 12),
+    'P3': (12, 9),
+    'P4': (18, 9),
+    'P5': (6, 3),
+    'P6': (9, 0),
+    'P7': (15, 0)
+}
+
+d_coords = {
+    'D1': (6, 15),
+    'D2': (12, 15),
+    'D3': (9, 12),
+    'D4': (15, 12),
+    'D5': (6, 3),
+    'D6': (12, 3),
+    'D7': (18, 3)
+}
+
+# Function to calculate distance
+def calculate_distance(point1, point2):
+    return np.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
+
+# Calculates distances from each P point to the corresponding D point
+distances = np.array([calculate_distance(p_coords['P'+str(i+1)], d_coords['D'+str(i+1)]) for i in range(n)])
+
+np.random.seed(0)  # For reproducibility
+f_ij = np.random.randint(1, 11, size=(n, n))
+np.fill_diagonal(f_ij, 0)
+
+# Egbelu Method 1
+def calculate_agv_number_method_1(n, T, V, tl, tu, e, distances, f_ij):
+    first_sum = sum(2 * f_ij[i, j] * distances[j] for i in range(n) for j in range(n) if i != j)
+    second_sum = n * (tl + tu)
+    N = (first_sum + second_sum) / (((60 * T)-(tl + tu)) * e)
+    return np.ceil(N)  # The number of AGVs should be an integer, round up
+
+
+N_required = calculate_agv_number_method_1(n, T, V, tl, tu, e, distances, f_ij)
+print(f"Required number of AGVs (method-1): {N_required}")
+
+# Function to calculate the average loaded trip distance D
+def calculate_average_distance(f_ij, distances):
+    total_distance = np.sum(f_ij * distances)
+    total_trips = np.sum(f_ij)
+    return total_distance / total_trips if total_trips > 0 else 0
+
+# Calculate the average loaded trip distance D
+D = calculate_average_distance(f_ij, distances)
+
+# Egbelu Method 2
+def calculate_agv_number_method_2(n, T, V, tl, tu, e, distances, f_ij, D):
+    # If D is not provided, calculate it using the provided distances
+    if D is None:
+        D = calculate_average_distance(f_ij, distances)
+        
+    # Calculate the mean travel time per trip t_ij with no adjustment for blocking and idleness
+    t_ij = D / V
+
+    # Mean travel, and load and unload time per trip, i, after accounting for blocking, idleness and vehicle efficiency
+    b = 0.1  # Blocking time factor
+    c = 0.1  # Idleness time factor
+    i = ((1 + b + c) * t_ij)/e + tl + tu
+
+    # Calculate total number of trips required
+    total_f_ij = np.sum(f_ij)
+
+    # Calculate number of vehicles needed (N)
+    N = total_f_ij / T / (60 / i)
+    return np.ceil(N)  # The number of AGVs should be an integer, round up
+
+N_required_method_2 = calculate_agv_number_method_2(n, T, V, tl, tu, e, distances, f_ij, D)
+print(f"Required number of AGVs (method-2): {N_required_method_2}")
+
+# Egbelu Method 3
+def calculate_agv_number_method_3(n, T, V, tl, tu, e, distances, f_ij):
+    # Net flow into a work center
+    net_flow = np.sum(f_ij, axis=1) - np.sum(f_ij, axis=0)
+    
+    # D1 and D2 calculation based on net flow
+    D1 = sum(max(flow, 0) * d for flow, d in zip(net_flow, distances))
+    D2 = sum(-min(flow, 0) * d for flow, d in zip(net_flow, distances))
+    
+    # D3 - Distance incurred due to loaded runs between work centers
+    D3 = np.sum(f_ij * distances[:, None])
+    
+    # Total number of trips required
+    total_trips = np.sum(f_ij * (tl + tu))
+    
+    
+    # Number of vehicles required
+    N = ((D1 + D2 + D3)/V + total_trips) / (((60 * T)-(tl + tu)) * e)
+    return np.ceil(N)  # The number of AGVs should be an integer, round up
+
+N_required_method_3 = calculate_agv_number_method_3(n, T, V, tl, tu, e, distances, f_ij)
+print(f"Required number of AGVs (method-3): {N_required_method_3}")
+
+
+# Egbelu Method 4
+def calculate_agv_number_method_4(n, T, V, tl, tu, e, distances, f_ij):
+    # g_ij calculation as per formula (13)
+    g_ij = np.zeros((n, n))
+    for i in range(n):
+        for j in range(n):
+            pickups_from_j = np.sum(f_ij[:, j])
+            deliveries_to_i = np.sum(f_ij[i, :])
+            total_pickups = np.sum(f_ij)
+            g_ij[i, j] = (deliveries_to_i / total_pickups) if pickups_from_j == 0 else (deliveries_to_i / pickups_from_j)
+    
+    # Empty and loaded run distances D_ij_prime and D_ij as per formulas (14) and (15)
+    D_ij_prime = np.zeros((n, n))
+    D_ij = np.zeros((n, n))
+    for i in range(n):
+        for j in range(n):
+            D_ij_prime[i, j] = g_ij[i, j] * calculate_distance(p_coords['P'+str(i+1)], d_coords['D'+str(j+1)])
+            D_ij[i, j] = f_ij[i, j] * calculate_distance(p_coords['P'+str(i+1)], d_coords['D'+str(j+1)])
+    
+    # Total distance D_ijw as per formula (16)
+    D_ijw = D_ij + D_ij_prime
+    
+    # The number of AGVs required as per formula (17)
+    N = (np.sum(D_ijw) + np.sum(f_ij * (tl + tu))) / ((60 * T - (tl + tu)) * e)
+    return np.ceil(N)
+
+N_required_method_4 = calculate_agv_number_method_4(n, T, V, tl, tu, e, distances, f_ij)
+print(f"Required number of AGVs (method-4): {N_required_method_4}")

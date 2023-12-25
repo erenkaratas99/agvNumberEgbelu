@@ -68,15 +68,21 @@ def calculate_agv_number_method_2(n, T, V, tl, tu, e, distances, f_ij, D):
         
     # Calculate the mean travel time per trip t_ij with no adjustment for blocking and idleness
     t_ij = D / V
+    
+    print(f"Average loaded trip distance D (method-2): {D}")    
+    print(f"Mean travel time per trip (method-2): {t_ij}")
 
-    # Mean travel, and load and unload time per trip, i, after accounting for blocking, idleness and vehicle efficiency
+    # Mean travel, and load and unload time per trip, i, after accounting for blocking, 
+    #idleness and vehicle efficiency
     b = 0.1  # Blocking time factor
     c = 0.1  # Idleness time factor
     i = ((1 + b + c) * t_ij)/e + tl + tu
 
     # Calculate total number of trips required
     total_f_ij = np.sum(f_ij)
-
+    
+    print(f"Total number of trips required (method-2): {total_f_ij}")
+    
     # Calculate number of vehicles needed (N)
     N = total_f_ij / T / (60 / i)
     return np.ceil(N)  # The number of AGVs should be an integer, round up
@@ -88,7 +94,8 @@ print(f"Required number of AGVs (method-2): {N_required_method_2}")
 def calculate_agv_number_method_3(n, T, V, tl, tu, e, distances, f_ij):
     # Net flow into a work center
     net_flow = np.sum(f_ij, axis=1) - np.sum(f_ij, axis=0)
-    
+    print(f"Net flow (method-3): {net_flow}")
+
     # D1 and D2 calculation based on net flow
     D1 = sum(max(flow, 0) * d for flow, d in zip(net_flow, distances))
     D2 = sum(-min(flow, 0) * d for flow, d in zip(net_flow, distances))
@@ -99,6 +106,9 @@ def calculate_agv_number_method_3(n, T, V, tl, tu, e, distances, f_ij):
     # Total number of trips required
     total_trips = np.sum(f_ij * (tl + tu))
     
+    print(f"D1 (method-3): {N_required_method_2}\nD2 (method-3): {N_required_method_2}\nD3 (method-3): {N_required_method_2}")
+    print(f"Total number of trips required (method-3): {total_trips}")
+
     
     # Number of vehicles required
     N = ((D1 + D2 + D3)/V + total_trips) / (((60 * T)-(tl + tu)) * e)
@@ -109,8 +119,13 @@ print(f"Required number of AGVs (method-3): {N_required_method_3}")
 
 
 # Egbelu Method 4
+
 def calculate_agv_number_method_4(n, T, V, tl, tu, e, distances, f_ij):
-    # g_ij calculation as per formula (13)
+    global D_ijw
+    global D_ij_prime
+    global D_ij
+    
+    # g_ij calculation as per formula (13)  
     g_ij = np.zeros((n, n))
     for i in range(n):
         for j in range(n):
@@ -129,6 +144,7 @@ def calculate_agv_number_method_4(n, T, V, tl, tu, e, distances, f_ij):
     
     # Total distance D_ijw as per formula (16)
     D_ijw = D_ij + D_ij_prime
+    
     
     # The number of AGVs required as per formula (17)
     N = (np.sum(D_ijw) + np.sum(f_ij * (tl + tu))) / ((60 * T - (tl + tu)) * e)
